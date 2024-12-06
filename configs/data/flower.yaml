@@ -1,0 +1,11 @@
+_target_: src.data.flower_datamodule.FlowerDataModule
+data_dir: data/2024-datalab-cup3-reverse-image-caption
+metadata_file_path: data/2024-datalab-cup3-reverse-image-caption/dataset/text2ImgData.pkl
+test_metadata_file_path: data/2024-datalab-cup3-reverse-image-caption/dataset/testData.pkl
+id2word_file_path: data/2024-datalab-cup3-reverse-image-caption/dictionary/id2Word.npy
+tokenizer:
+  _target_: transformers.AutoTokenizer.from_pretrained
+  pretrained_model_name_or_path: openai/clip-vit-base-patch32
+batch_size: 32 
+num_workers: 8
+pin_memory: False

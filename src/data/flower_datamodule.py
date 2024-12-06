@@ -1,13 +1,14 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import torch
 from lightning import LightningDataModule
-from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
-from torchvision.datasets import MNIST
-from torchvision.transforms import transforms
+from torch.utils.data import DataLoader, Dataset
+from transformers import AutoTokenizer
+
+from src.data.components.flower_dataset import FlowerDataset, TestFlowerDataset
 
 
-class MNISTDataModule(LightningDataModule):
+class FlowerDataModule(LightningDataModule):
     """`LightningDataModule` for the MNIST dataset.
 
     The MNIST database of handwritten digits has a training set of 60,000 examples, and a test set of 10,000 examples.
@@ -54,8 +55,11 @@ class MNISTDataModule(LightningDataModule):
 
     def __init__(
         self,
-        data_dir: str = "data/",
-        train_val_test_split: Tuple[int, int, int] = (55_000, 5_000, 10_000),
+        data_dir: str,
+        metadata_file_path: str,
+        test_metadata_file_path: str,
+        id2word_file_path: str,
+        tokenizer: AutoTokenizer,
         batch_size: int = 64,
         num_workers: int = 0,
         pin_memory: bool = False,
@@ -74,24 +78,11 @@ class MNISTDataModule(LightningDataModule):
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False)
 
-        # data transformations
-        self.transforms = transforms.Compose(
-            [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-        )
-
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None
 
         self.batch_size_per_device = batch_size
-
-    @property
-    def num_classes(self) -> int:
-        """Get the number of classes.
-
-        :return: The number of MNIST classes (10).
-        """
-        return 10
 
     def prepare_data(self) -> None:
         """Download data if needed. Lightning ensures that `self.prepare_data()` is called only
@@ -101,8 +92,7 @@ class MNISTDataModule(LightningDataModule):
 
         Do not use it to assign state (self.x = y).
         """
-        MNIST(self.hparams.data_dir, train=True, download=True)
-        MNIST(self.hparams.data_dir, train=False, download=True)
+        pass
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Load data. Set variables: `self.data_train`, `self.data_val`, `self.data_test`.
@@ -114,30 +104,37 @@ class MNISTDataModule(LightningDataModule):
 
         :param stage: The stage to setup. Either `"fit"`, `"validate"`, `"test"`, or `"predict"`. Defaults to ``None``.
         """
-        # Divide batch size by the number of devices.
-        if self.trainer is not None:
-            if self.hparams.batch_size % self.trainer.world_size != 0:
-                raise RuntimeError(
-                    f"Batch size ({self.hparams.batch_size}) is not divisible by the number of devices ({self.trainer.world_size})."
-                )
-            self.batch_size_per_device = (
-                self.hparams.batch_size // self.trainer.world_size
-            )
-
         # load and split datasets only if not loaded already
         if not self.data_train and not self.data_val and not self.data_test:
-            trainset = MNIST(
-                self.hparams.data_dir, train=True, transform=self.transforms
+            self.data_train = FlowerDataset(
+                self.hparams.data_dir,
+                self.hparams.metadata_file_path,
+                self.hparams.id2word_file_path,
             )
-            testset = MNIST(
-                self.hparams.data_dir, train=False, transform=self.transforms
+            self.data_val = TestFlowerDataset(
+                self.hparams.data_dir,
+                self.hparams.test_metadata_file_path,
+                self.hparams.id2word_file_path,
             )
-            dataset = ConcatDataset(datasets=[trainset, testset])
-            self.data_train, self.data_val, self.data_test = random_split(
-                dataset=dataset,
-                lengths=self.hparams.train_val_test_split,
-                generator=torch.Generator().manual_seed(42),
+            self.data_test = TestFlowerDataset(
+                self.hparams.data_dir,
+                self.hparams.test_metadata_file_path,
+                self.hparams.id2word_file_path,
             )
+
+    def collate_fn(self, batch: Any) -> Any:
+        images = []
+        captions = []
+        for image, caption in batch:
+            images.append(image)
+            captions.append(caption)
+
+        return torch.stack(images), self.hparams.tokenizer(
+            captions, padding=True, return_tensors="pt"
+        )
+
+    def test_collate_fn(self, batch: Any) -> Any:
+        return self.hparams.tokenizer(batch, padding=True, return_tensors="pt")
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader.
@@ -150,6 +147,7 @@ class MNISTDataModule(LightningDataModule):
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=True,
+            collate_fn=self.collate_fn,
         )
 
     def val_dataloader(self) -> DataLoader[Any]:
@@ -159,10 +157,11 @@ class MNISTDataModule(LightningDataModule):
         """
         return DataLoader(
             dataset=self.data_val,
-            batch_size=self.batch_size_per_device,
+            batch_size=self.batch_size_per_device * 16,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
+            collate_fn=self.test_collate_fn,
         )
 
     def test_dataloader(self) -> DataLoader[Any]:
@@ -172,10 +171,11 @@ class MNISTDataModule(LightningDataModule):
         """
         return DataLoader(
             dataset=self.data_test,
-            batch_size=self.batch_size_per_device,
+            batch_size=self.batch_size_per_device * 16,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
+            collate_fn=self.test_collate_fn,
         )
 
     def teardown(self, stage: Optional[str] = None) -> None:
@@ -204,4 +204,4 @@ class MNISTDataModule(LightningDataModule):
 
 
 if __name__ == "__main__":
-    _ = MNISTDataModule()
+    _ = FlowerDataModule()

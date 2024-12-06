@@ -1,0 +1,37 @@
+_target_: src.models.rat_gan_module.RATGANLitModule
+
+generator:
+  _target_: src.models.components.generator.Generator
+  ndf: 64
+  noise_dim: 100
+
+discriminator_feature_extractor:
+  _target_: src.models.components.discriminator.DiscriminatorFeatureExtractor
+  ndf: 64
+
+discriminator:
+  _target_: src.models.components.discriminator.Discriminator
+  ndf: 64
+
+clip_model:
+  _target_: transformers.CLIPTextModelWithProjection.from_pretrained
+  pretrained_model_name_or_path: openai/clip-vit-base-patch32
+  torch_dtype: 
+    _target_: hydra.utils.get_object
+    path: torch.float16
+  attn_implementation: sdpa
+
+optimizer_g:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.0001
+  betas: [0.0, 0.9]
+
+optimizer_d:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.0004
+  betas: [0.0, 0.9]
+
+# compile model for faster training with pytorch 2.0
+compile: false
