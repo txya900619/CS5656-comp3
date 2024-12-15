@@ -48,19 +48,21 @@ class DiscriminatorFeatureExtractor(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, ndf):
+    def __init__(self, ndf, context_dim):
         super(Discriminator, self).__init__()
+
+        self.context_dim = context_dim
 
         self.joint_conv = nn.Sequential(
             nn.Conv2d(
-                ndf * 16 + 512, ndf * 2, 3, 1, 1, bias=False
+                ndf * 16 + self.context_dim, ndf * 2, 3, 1, 1, bias=False
             ),  # 512 from clip model
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(ndf * 2, 1, 4, 1, 0, bias=False),
         )
 
     def forward(self, x, c):
-        c = c.view(-1, 512, 1, 1)
+        c = c.view(-1, self.context_dim, 1, 1)
         c = c.repeat(1, 1, 4, 4)
         x_with_c = torch.cat([x, c], dim=1)
         return self.joint_conv(x_with_c)

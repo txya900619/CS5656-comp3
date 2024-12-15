@@ -8,6 +8,39 @@ from torchvision.io import decode_image
 from torchvision.transforms import v2 as transforms
 
 
+class FlowerCLIPDataset(Dataset):
+    def __init__(
+        self, data_dir: str, metadata_file_path: str, id2word_file_path: str
+    ) -> None:
+        self.data_dir = data_dir
+        id2word = np.load(id2word_file_path)  # id: (id, word)
+
+        with open(metadata_file_path, "rb") as f:
+            metadata = pickle.load(f).to_dict("list")
+            self.captions = []
+            for captions in metadata["Captions"]:
+                self.captions.append(
+                    [
+                        " ".join([id2word[int(id)][1] for id in caption])
+                        .replace("<PAD>", "")
+                        .strip()
+                        for caption in captions
+                    ]
+                )
+            self.image_paths = [
+                os.path.join(data_dir, image_path)
+                for image_path in metadata["ImagePath"]
+            ]
+
+    def __len__(self) -> int:
+        return len(self.image_paths)
+
+    def __getitem__(self, idx: int) -> dict:
+        caption = np.random.choice(self.captions[idx])
+        image = decode_image(self.image_paths[idx], "RGB")
+        return image, caption
+
+
 class FlowerDataset(Dataset):
     def __init__(
         self, data_dir: str, metadata_file_path: str, id2word_file_path: str

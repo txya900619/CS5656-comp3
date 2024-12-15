@@ -47,23 +47,23 @@ class CustomLSTM(nn.Module):
 
 
 class Affine(nn.Module):
-    def __init__(self, num_features):
+    def __init__(self, num_features, num_hidden):
         super(Affine, self).__init__()
         self.mlp_gamma = nn.Sequential(
             OrderedDict(
                 [
-                    ("linear1", nn.Linear(256, 256)),
+                    ("linear1", nn.Linear(num_hidden, num_hidden)),
                     ("relu1", nn.ReLU(inplace=True)),
-                    ("linear2", nn.Linear(256, num_features)),
+                    ("linear2", nn.Linear(num_hidden, num_features)),
                 ]
             )
         )
         self.mlp_beta = nn.Sequential(
             OrderedDict(
                 [
-                    ("linear1", nn.Linear(256, 256)),
+                    ("linear1", nn.Linear(num_hidden, num_hidden)),
                     ("relu1", nn.ReLU(inplace=True)),
-                    ("linear2", nn.Linear(256, num_features)),
+                    ("linear2", nn.Linear(num_hidden, num_features)),
                 ]
             )
         )
@@ -100,10 +100,10 @@ class GeneratorBlock(nn.Module):
 
         self.conv1 = nn.Conv2d(in_channels, out_channels, 3, 1, 1)
         self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, 1)
-        self.affine0 = Affine(in_channels)
-        self.affine1 = Affine(in_channels)
-        self.affine2 = Affine(out_channels)
-        self.affine3 = Affine(out_channels)
+        self.affine0 = Affine(in_channels, lstm.hidden_size)
+        self.affine1 = Affine(in_channels, lstm.hidden_size)
+        self.affine2 = Affine(out_channels, lstm.hidden_size)
+        self.affine3 = Affine(out_channels, lstm.hidden_size)
 
         self.gamma = nn.Parameter(torch.zeros(1))
 
@@ -130,11 +130,11 @@ class GeneratorBlock(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, ndf, noise_dim):
+    def __init__(self, ndf, noise_dim, lstm_input_dim, lstm_hidden_dim):
         super(Generator, self).__init__()
         self.ndf = ndf
         self.noize_dim = noise_dim
-        self.lstm = CustomLSTM(512, 256)  # 512 from clip model
+        self.lstm = CustomLSTM(lstm_input_dim, lstm_hidden_dim)
         self.input_layer = nn.Linear(noise_dim, ndf * 8 * 4 * 4)
         # self.blocks = nn.ModuleList(
         #     [

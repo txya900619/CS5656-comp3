@@ -134,7 +134,9 @@ class FlowerDataModule(LightningDataModule):
         )
 
     def test_collate_fn(self, batch: Any) -> Any:
-        return self.hparams.tokenizer(batch, padding=True, return_tensors="pt")
+        ids, text_list = zip(*batch)
+        tokens = self.hparams.tokenizer(text_list, padding=True, return_tensors="pt")
+        return ids, tokens
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader.

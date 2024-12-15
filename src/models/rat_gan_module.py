@@ -7,6 +7,7 @@ from lightning import LightningModule
 from torch.nn import functional as F
 from torchmetrics import MeanMetric
 from torchvision.utils import make_grid
+from transformers import SiglipTextModel
 
 
 class RATGANLitModule(LightningModule):
@@ -120,7 +121,10 @@ class RATGANLitModule(LightningModule):
         optimizer_g, optimizer_d = self.optimizers()
 
         with torch.no_grad():
-            text_emb = self.clip_model(**tokens).text_embeds.float().contiguous()
+            if isinstance(self.clip_model, SiglipTextModel):
+                text_emb = self.clip_model(**tokens)[1].float()
+            else:
+                text_emb = self.clip_model(**tokens).text_embeds.float()
 
         # generate fake images first
         fake_images = self.generator_step(text_emb)
@@ -221,8 +225,11 @@ class RATGANLitModule(LightningModule):
         :param batch_idx: The index of the current batch.
         """
         if batch_idx == 0 and self.global_rank == 0:
-            tokens = batch
-            text_emb = self.clip_model(**tokens).text_embeds.float()
+            _, tokens = batch
+            if isinstance(self.clip_model, SiglipTextModel):
+                text_emb = self.clip_model(**tokens)[1].float()
+            else:
+                text_emb = self.clip_model(**tokens).text_embeds.float()
             fake_images = self.generator_step(text_emb)
             images_to_log = fake_images[:16]
             images_to_log = (
